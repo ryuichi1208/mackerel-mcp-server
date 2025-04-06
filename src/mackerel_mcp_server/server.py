@@ -12,12 +12,10 @@ import logging
 import json
 import datetime
 import asyncio
-import httpx
-import anyio
+from typing import List, Dict, Optional
 
 import client
 
-from mackerel.client import Client
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool, TextContent
 
@@ -57,9 +55,6 @@ logger = logging.getLogger(__name__)
 # FastMCP instance
 mcp = FastMCP("mackerel server")
 
-# Constants
-MACKEREL_API_BASE_URL = "https://api.mackerelio.com/api/v0"
-
 
 def get_mackerel_client():
     """
@@ -78,7 +73,7 @@ def get_mackerel_client():
     try:
         api_key = os.environ["MACKEREL_API_KEY"]
         logger.info("Creating Mackerel client", extra={"api_key_length": len(api_key)})
-        return Client(mackerel_api_key=api_key)
+        return client.Mackerel(api_key=api_key)
     except KeyError as e:
         logger.error("Missing MACKEREL_API_KEY environment variable", extra={"error": str(e)})
         return None
@@ -100,28 +95,15 @@ async def list_hosts():
         list: A list containing a TextContent object with JSON-formatted host data
     """
     logger.info("Calling list_hosts")
-    client = get_mackerel_client()
-    if not client:
+    cli = get_mackerel_client()
+    if not cli:
         logger.error("Failed to get Mackerel client")
         return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
 
     try:
         logger.info("Fetching hosts from Mackerel API")
-        hosts = client.get_hosts()
-        logger.info("Successfully fetched hosts", extra={"host_count": len(hosts)})
-
-        hosts = [
-            {
-                "id": host.id,
-                "name": host.name,
-                "status": host.status,
-                "roles": host.roles,
-                "memo": host.memo,
-                "meta": [{"key": k, "value": v} for k, v in host.meta.items() if k in ("agent-version", "kernel")],
-            }
-            for host in hosts
-        ]
-
+        hosts = await cli.get_hosts()
+        logger.info("Successfully fetched hosts")
         return [TextContent(type="text", text=json.dumps(hosts, ensure_ascii=False))]
     except Exception as e:
         logger.error("Error in list_hosts", extra={"error": str(e)})
@@ -137,17 +119,14 @@ async def list_services() -> list[TextContent]:
         list: A list containing a TextContent object with JSON-formatted service data
     """
     logger.info("Retrieving list of services")
-    try:
-        api_key = os.getenv("MACKEREL_API_KEY") or os.getenv("MACKEREL_APIKEY")
-        if not api_key:
-            raise ValueError("Mackerel API key not found in environment variables")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.mackerelio.com/api/v0/services", headers={"X-Api-Key": api_key})
-            response.raise_for_status()
-            services = response.json()
-            logger.info(f"Successfully retrieved {len(services['services'])} services")
-            return [TextContent(type="text", text=json.dumps(services, indent=2))]
+    try:
+        services = await cli.get_services()
+        logger.info("Successfully retrieved services")
+        return [TextContent(type="text", text=json.dumps(services, indent=2))]
     except Exception as e:
         error_msg = {"error": str(e)}
         logger.error(f"Failed to retrieve services: {e}")
@@ -159,10 +138,6 @@ async def get_service(service_name: str):
     """
     Get detailed information about a specific Mackerel service.
 
-    This tool directly calls the Mackerel API to retrieve detailed information
-    about a service identified by its name, including roles, metrics configuration,
-    and other service-specific details.
-
     Args:
         service_name (str): The name of the service to retrieve
 
@@ -170,50 +145,14 @@ async def get_service(service_name: str):
         list: A list containing a TextContent object with JSON-formatted service data
     """
     logger.info("Calling get_service", extra={"service_name": service_name})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
 
-    # Get API key
     try:
-        api_key = os.environ.get("MACKEREL_API_KEY") or os.environ.get("MACKEREL_APIKEY")
-        if not api_key:
-            error_msg = "MACKEREL_API_KEY not found in environment variables"
-            logger.error(error_msg)
-            return [TextContent(type="text", text=json.dumps({"error": error_msg}))]
-    except Exception as e:
-        logger.error("Error retrieving API key", extra={"error": str(e)})
-        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
-
-    # Directly call Mackerel API
-    try:
-        logger.info("Fetching service from Mackerel API", extra={"service_name": service_name})
-
-        # Construct API URL and headers
-        url = f"{MACKEREL_API_BASE_URL}/services/{service_name}"
-        headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-
-        # Make API request
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
-
-            # Check for successful response
-            if response.status_code == 200:
-                service_data = response.json()
-                logger.info(
-                    "Successfully fetched service data",
-                    extra={"service_name": service_name, "status_code": response.status_code},
-                )
-                return [TextContent(type="text", text=json.dumps(service_data, ensure_ascii=False))]
-            else:
-                error_msg = f"API request failed with status {response.status_code}: {response.text}"
-                logger.error(
-                    "Service API request failed",
-                    extra={
-                        "service_name": service_name,
-                        "status_code": response.status_code,
-                        "response": response.text,
-                    },
-                )
-                return [TextContent(type="text", text=json.dumps({"error": error_msg}))]
-
+        service_data = await cli.get_service(service_name)
+        logger.info("Successfully fetched service data", extra={"service_name": service_name})
+        return [TextContent(type="text", text=json.dumps(service_data, ensure_ascii=False))]
     except Exception as e:
         logger.error("Error in get_service", extra={"error": str(e), "service_name": service_name})
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
@@ -224,46 +163,438 @@ async def get_host(host_id: str):
     """
     Get information about a specific Mackerel host.
 
-    Retrieves detailed information about a specific host identified by its ID.
-
     Args:
         host_id (str): The ID of the host to retrieve
 
     Returns:
         list: A list containing a TextContent object with JSON-formatted host data
-
-    Raises:
-        Exception: If the host cannot be found or other API errors occur
     """
     logger.info("Calling get_host", extra={"host_id": host_id})
-    client = get_mackerel_client()
-    if not client:
-        logger.error("Failed to get Mackerel client")
+    cli = get_mackerel_client()
+    if not cli:
         return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
 
     try:
-        logger.info("Fetching host from Mackerel API", extra={"host_id": host_id})
-        res = client.get_host(host_id)
-        logger.info("Successfully fetched host", extra={"host_id": host_id, "host_name": res.name})
-
-        host = {
-            "id": res.id,
-            "name": res.name,
-            "status": res.status,
-            "roles": res.roles,
-            "memo": res.memo,
-        }
-
+        host = await cli.get_host(host_id)
+        logger.info("Successfully fetched host", extra={"host_id": host_id})
         return [TextContent(type="text", text=json.dumps(host, ensure_ascii=False))]
     except Exception as e:
         logger.error("Error in get_host", extra={"error": str(e), "host_id": host_id})
         return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
 
 
+@mcp.tool()
+async def update_host_status(host_id: str, status: str):
+    """
+    Update the status of a specific host.
+
+    Args:
+        host_id (str): The ID of the host to update
+        status (str): The new status to set ('standby', 'working', 'maintenance', 'poweroff')
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling update_host_status", extra={"host_id": host_id, "status": status})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.update_host_status(host_id, status)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to update host status", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def retire_host(host_id: str):
+    """
+    Retire a specific host.
+
+    Args:
+        host_id (str): The ID of the host to retire
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling retire_host", extra={"host_id": host_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.retire_host(host_id)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to retire host", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def post_metrics(metrics: List[Dict]):
+    """
+    Post metrics to Mackerel.
+
+    Args:
+        metrics (List[Dict]): List of metric data to post
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling post_metrics", extra={"metrics_count": len(metrics)})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.post_metrics(metrics)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to post metrics", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def get_monitors():
+    """
+    Get list of all monitors.
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted monitor data
+    """
+    logger.info("Calling get_monitors")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        monitors = await cli.get_monitors()
+        return [TextContent(type="text", text=json.dumps(monitors, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to get monitors", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def create_monitor(monitor_config: Dict):
+    """
+    Create a new monitor.
+
+    Args:
+        monitor_config (Dict): Monitor configuration
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling create_monitor")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.create_monitor(monitor_config)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to create monitor", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def update_monitor(monitor_id: str, monitor_config: Dict):
+    """
+    Update an existing monitor.
+
+    Args:
+        monitor_id (str): ID of the monitor to update
+        monitor_config (Dict): New monitor configuration
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling update_monitor", extra={"monitor_id": monitor_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.update_monitor(monitor_id, monitor_config)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to update monitor", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def delete_monitor(monitor_id: str):
+    """
+    Delete a monitor.
+
+    Args:
+        monitor_id (str): ID of the monitor to delete
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling delete_monitor", extra={"monitor_id": monitor_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.delete_monitor(monitor_id)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to delete monitor", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def get_alerts(from_time: Optional[int] = None, to_time: Optional[int] = None):
+    """
+    Get list of alerts.
+
+    Args:
+        from_time (Optional[int]): Start time in epoch seconds
+        to_time (Optional[int]): End time in epoch seconds
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted alert data
+    """
+    logger.info("Calling get_alerts", extra={"from": from_time, "to": to_time})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        alerts = await cli.get_alerts(from_time, to_time)
+        return [TextContent(type="text", text=json.dumps(alerts, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to get alerts", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def close_alert(alert_id: str, reason: str):
+    """
+    Close an alert.
+
+    Args:
+        alert_id (str): ID of the alert to close
+        reason (str): Reason for closing the alert
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling close_alert", extra={"alert_id": alert_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.close_alert(alert_id, reason)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to close alert", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def get_downtimes():
+    """
+    Get list of downtimes.
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted downtime data
+    """
+    logger.info("Calling get_downtimes")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        downtimes = await cli.get_downtimes()
+        return [TextContent(type="text", text=json.dumps(downtimes, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to get downtimes", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def create_downtime(downtime_config: Dict):
+    """
+    Create a new downtime.
+
+    Args:
+        downtime_config (Dict): Downtime configuration
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling create_downtime")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.create_downtime(downtime_config)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to create downtime", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def update_downtime(downtime_id: str, downtime_config: Dict):
+    """
+    Update an existing downtime.
+
+    Args:
+        downtime_id (str): ID of the downtime to update
+        downtime_config (Dict): New downtime configuration
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling update_downtime", extra={"downtime_id": downtime_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.update_downtime(downtime_id, downtime_config)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to update downtime", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def delete_downtime(downtime_id: str):
+    """
+    Delete a downtime.
+
+    Args:
+        downtime_id (str): ID of the downtime to delete
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling delete_downtime", extra={"downtime_id": downtime_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.delete_downtime(downtime_id)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to delete downtime", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def get_channels():
+    """
+    Get list of notification channels.
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted channel data
+    """
+    logger.info("Calling get_channels")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        channels = await cli.get_channels()
+        return [TextContent(type="text", text=json.dumps(channels, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to get channels", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def create_channel(channel_config: Dict):
+    """
+    Create a new notification channel.
+
+    Args:
+        channel_config (Dict): Channel configuration
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling create_channel")
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.create_channel(channel_config)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to create channel", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+@mcp.tool()
+async def delete_channel(channel_id: str):
+    """
+    Delete a notification channel.
+
+    Args:
+        channel_id (str): ID of the channel to delete
+
+    Returns:
+        list: A list containing a TextContent object with JSON-formatted response
+    """
+    logger.info("Calling delete_channel", extra={"channel_id": channel_id})
+    cli = get_mackerel_client()
+    if not cli:
+        return [TextContent(type="text", text=json.dumps({"error": "Failed to get Mackerel client"}))]
+
+    try:
+        result = await cli.delete_channel(channel_id)
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+    except Exception as e:
+        error_msg = {"error": str(e)}
+        logger.error("Failed to delete channel", extra={"error": str(e)})
+        return [TextContent(type="text", text=json.dumps(error_msg))]
+
+
+async def main():
+    """
+    Main entry point for the Mackerel MCP server.
+
+    Initializes and runs the MCP server using stdio as the transport mechanism.
+    """
+    logger.info("Starting Mackerel MCP server")
+    await mcp.run(transport="stdio")
+
+
 if __name__ == "__main__":
     try:
-        logger.info("Starting Mackerel MCP server")
-        mcp.run(transport="stdio")
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+        sys.exit(0)
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
         sys.exit(1)
