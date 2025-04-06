@@ -1,6 +1,7 @@
-import httpx
-from typing import Dict, List, Optional, Union
 from datetime import datetime
+from typing import Dict, List, Optional, Union
+
+import httpx
 
 
 class Mackerel:

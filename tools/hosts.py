@@ -1,7 +1,8 @@
+import json
+import logging
 import os
 import sys
-import logging
-import json
+
 from mackerel.client import Client
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def get_hosts():
 
 def get_services():
     client = get_mackerel_client()
-    services = client.
+    services = client.get_services()
     print(json.dumps(services, ensure_ascii=False))
 
 
