@@ -29,7 +29,9 @@ class Mackerel:
         self.api_key = api_key
         self.headers = {"X-Api-Key": self.api_key, "Content-Type": "application/json"}
 
-    async def _request(self, method: str, path: str, data: Optional[Dict] = None) -> Dict:
+    async def _request(
+        self, method: str, path: str, data: Optional[Dict] = None
+    ) -> Dict:
         """
         Make a request to the Mackerel API.
 
@@ -46,12 +48,16 @@ class Mackerel:
         """
         url = f"{self.BASE_URL}{path}"
         async with httpx.AsyncClient() as client:
-            response = await client.request(method, url, headers=self.headers, json=data)
+            response = await client.request(
+                method, url, headers=self.headers, json=data
+            )
             response.raise_for_status()
             return response.json()
 
     # Host-related APIs
-    async def get_hosts(self, service: Optional[str] = None, role: Optional[str] = None) -> Dict:
+    async def get_hosts(
+        self, service: Optional[str] = None, role: Optional[str] = None
+    ) -> Dict:
         """
         Get a list of registered hosts.
 
@@ -92,7 +98,9 @@ class Mackerel:
         Returns:
             Dict: Response indicating success or failure
         """
-        return await self._request("POST", f"/hosts/{host_id}/status", {"status": status})
+        return await self._request(
+            "POST", f"/hosts/{host_id}/status", {"status": status}
+        )
 
     async def retire_host(self, host_id: str) -> Dict:
         """
@@ -159,7 +167,9 @@ class Mackerel:
         """
         return await self._request("POST", "/metrics", {"metrics": metrics})
 
-    async def get_host_metrics(self, host_id: str, name: str, from_time: int, to_time: int) -> Dict:
+    async def get_host_metrics(
+        self, host_id: str, name: str, from_time: int, to_time: int
+    ) -> Dict:
         """
         Get metric values for a specific host.
 
@@ -175,7 +185,9 @@ class Mackerel:
         params = {"name": name, "from": from_time, "to": to_time}
         return await self._request("GET", f"/hosts/{host_id}/metrics", params)
 
-    async def get_service_metrics(self, service_name: str, name: str, from_time: int, to_time: int) -> Dict:
+    async def get_service_metrics(
+        self, service_name: str, name: str, from_time: int, to_time: int
+    ) -> Dict:
         """
         Get metric values for a specific service.
 
@@ -247,7 +259,9 @@ class Mackerel:
         return await self._request("DELETE", f"/monitors/{monitor_id}")
 
     # Alert-related APIs
-    async def get_alerts(self, from_time: Optional[int] = None, to_time: Optional[int] = None) -> Dict:
+    async def get_alerts(
+        self, from_time: Optional[int] = None, to_time: Optional[int] = None
+    ) -> Dict:
         """
         Get a list of alerts.
 
@@ -276,7 +290,9 @@ class Mackerel:
         Returns:
             Dict: Response indicating success or failure
         """
-        return await self._request("POST", f"/alerts/{alert_id}/close", {"reason": reason})
+        return await self._request(
+            "POST", f"/alerts/{alert_id}/close", {"reason": reason}
+        )
 
     # Downtime-related APIs
     async def get_downtimes(self) -> Dict:

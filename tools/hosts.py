@@ -28,7 +28,11 @@ def get_hosts():
             "status": host.status,
             "roles": host.roles,
             "memo": host.memo,
-            "meta": [{"key": k, "value": v} for k, v in host.meta.items() if k in ("agent-version", "kernel")],
+            "meta": [
+                {"key": k, "value": v}
+                for k, v in host.meta.items()
+                if k in ("agent-version", "kernel")
+            ],
         }
         for host in hosts
     ]
