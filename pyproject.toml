@@ -1,0 +1,23 @@
+[project]
+name = "mackerel-mcp-server"
+version = "0.1.0"
+description = "A MCP server project"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+ "httpx>=0.28.1",
+ "mackerel>=0.2",
+ "mackerel-api>=1.0.2",
+ "mackerel-client>=0.2.1",
+ "mcp>=1.6.0",
+]
+[[project.authors]]
+name = "ryuichi1208"
+email = "ryucrosskey@gmail.com"
+
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+[project.scripts]
+mackerel-mcp-server = "mackerel_mcp_server:main"
