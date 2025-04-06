@@ -12,41 +12,23 @@ MCP server implementation for Mackerel monitoring service.
 - Downtimes (list, create, update, delete)
 - Notification channels (list, create, delete)
 
-## Setup
-
-```bash
-# Install
-pip install mackerel-mcp-server
-
-# Set API key
-export MACKEREL_API_KEY=your_api_key_here
-
-# Run
-mackerel-mcp-server
-```
-
-## Development
-
-```bash
-# Install from source
-git clone https://github.com/ryuichi1208/mackerel-mcp-server.git
-cd mackerel-mcp-server
-pip install -e .
-
-# Debug with MCP Inspector
-npx @modelcontextprotocol/inspector uv run mackerel-mcp-server
-```
-
 ## Claude Desktop Configuration
 
 Add to `claude_desktop_config.json`:
 
 ```json
 {
-  "mcpServers": {
-    "mackerel-mcp-server": {
-      "command": "uvx",
-      "args": ["mackerel-mcp-server"]
+    "mcp-mackerel": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/app/mackerel_mcp_server",
+        "server.py"
+      ],
+      "env": {
+        "MACKEREL_API_KEY": "XXXXXXXXXXXXXX"
+      }
     }
   }
 }
