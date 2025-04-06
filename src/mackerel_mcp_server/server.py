@@ -15,6 +15,8 @@ import asyncio
 import httpx
 import anyio
 
+import client
+
 from mackerel.client import Client
 from mcp.server.fastmcp import FastMCP
 from mcp.types import Tool, TextContent
@@ -258,19 +260,10 @@ async def get_host(host_id: str):
         return [TextContent(type="text", text=json.dumps({"error": str(e)}, ensure_ascii=False))]
 
 
-async def main():
-    """
-    Main entry point for the Mackerel MCP server.
-
-    Initializes and runs the MCP server using stdio as the transport mechanism.
-    """
-    logger.info("Starting Mackerel MCP server")
-    await mcp.run(transport="stdio")
-
-
 if __name__ == "__main__":
     try:
-        anyio.run(main)
+        logger.info("Starting Mackerel MCP server")
+        mcp.run(transport="stdio")
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
         sys.exit(1)
