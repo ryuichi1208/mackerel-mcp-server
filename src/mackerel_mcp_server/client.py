@@ -27,7 +27,9 @@ class Mackerel:
         Args:
             api_key (str): The API key for authentication with Mackerel
         """
+        print("aaa", api_key)
         self.api_key = api_key or os.getenv("MACKEREL_API_KEY") or os.getenv("MACKEREL_APIKEY")
+        print("aaa", self.api_key)
         if not self.api_key:
             raise ValueError("API key is required")
         self.base_url = "https://api.mackerelio.com/api/v0"
